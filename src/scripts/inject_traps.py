@@ -12,8 +12,7 @@ from tqdm import tqdm
 from transformers import LlamaTokenizer
 
 
-
-def inject_one(text: str, trap_text: str, n_rep: int ) -> str:
+def inject_one(text: str, trap_text: str, n_rep: int) -> str:
     '''
     Let's inject the trap sequences at random places in the original text. 
     By splitting on spaces, we ensure to inject the trap sequences while not splitting any words from the original text.
@@ -46,13 +45,13 @@ def inject_all(df_trap_info, raw_dataset, tokenizer, args):
 
     for i, og_entry in tqdm(enumerate(raw_dataset)):
         new_entry = og_entry.copy()
-        
+
         if i in df_trap_info.index:
             row = df_trap_info.loc[i]
             trap_tokens, n_rep = row["trap_tokens"], row["n_rep"]
             new_text = inject_one(
-                text=og_entry["text"], 
-                trap_text=tokenizer.decode(trap_tokens), 
+                text=og_entry["text"],
+                trap_text=tokenizer.decode(trap_tokens),
                 n_rep=n_rep
             )
 
@@ -63,7 +62,7 @@ def inject_all(df_trap_info, raw_dataset, tokenizer, args):
     # save the results
     ds_dict = {k: [e[k] for e in trap_dataset_entries] for k in raw_dataset.column_names}
     dataset = Dataset.from_dict(ds_dict)
-    
+
     return dataset
 
 
@@ -72,7 +71,7 @@ def read_all_traps(path_to_trap_dir: str) -> dict[int, dict[tuple[int, int]], np
     total_traps = 0
 
     for file in os.listdir(path_to_trap_dir):
-        with open(os.path.join(path_to_trap_dir,file), "rb") as f:
+        with open(os.path.join(path_to_trap_dir, file), "rb") as f:
             traps = pickle.load(f)
             seq_len = None
             for arr in traps.values():
@@ -83,12 +82,12 @@ def read_all_traps(path_to_trap_dir: str) -> dict[int, dict[tuple[int, int]], np
                 elif seq_len != arr.shape[1] - 1:
                     raise ValueError(f"Inconsistent sequence length in {file}")
             all_traps[seq_len] = traps
-    
+
     return all_traps, total_traps
 
 
 def distribute_traps(all_traps, raw_dataset, args) -> pd.DataFrame:
-    doc_indices = list(range(len(raw_dataset)))
+    doc_indices = [i for i in range(len(raw_dataset)) if len(raw_dataset[i]["input_ids"] > args.doc_min_tokens)]
     random.shuffle(doc_indices)
     n_rep_iterator = cycle(args.n_reps)
     doc_idx_iterator = iter(doc_indices)
@@ -148,15 +147,9 @@ if __name__ == "__main__":
         num_proc=args.nb_workers,
     )
     logging.info(f"Loaded dataset with {len(dataset)} documents")
-    
-    dataset = dataset.filter(
-        lambda x: len(x["input_ids"]) > args.doc_min_tokens,
-        num_proc=args.nb_workers,
-    ).remove_columns(["input_ids", "attention_mask"])
-    logging.info(f"Filtered dataset: {len(dataset)} documents with at least {args.doc_min_tokens} tokens")
 
     all_traps, total_traps = read_all_traps(args.path_to_trap_dir)
-    
+
     if total_traps > len(dataset):
         raise ValueError(f"Dataset is too small. len(dataset)={len(dataset)}, but found {total_traps} traps")
 
@@ -166,12 +159,13 @@ if __name__ == "__main__":
     logging.info(f"Read dataset({len(dataset)} entries) and trap sequences ({total_traps} entries)")
 
     df_trap_info = distribute_traps(all_traps, dataset, args)
-    with open(args.output_info_path,"wb") as f:
+    with open(args.output_info_path, "wb") as f:
         # saving as pickle not csv because it's easier to deal with lists
-        pickle.dump(df_trap_info,f)
-    
+        pickle.dump(df_trap_info, f)
+
     logging.info(f"Saved trap distribution info ({len(df_trap_info)} rows) to {args.output_info_path}")
 
+    dataset = dataset.remove_columns(["input_ids", "attention_mask"])
     injected_dataset = inject_all(df_trap_info, dataset, tokenizer, args)
 
     # Save the dataset
