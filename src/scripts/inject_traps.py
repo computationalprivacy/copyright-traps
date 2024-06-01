@@ -15,18 +15,18 @@ from transformers import LlamaTokenizer
 
 def inject_one(text: str, trap_text: str, n_rep: int ) -> str:
     '''
-    Let's inject the canary at random places in the original text. 
-    By splitting on spaces, we ensure to inject the canaries while not splitting any words from the original text.
+    Let's inject the trap sequences at random places in the original text. 
+    By splitting on spaces, we ensure to inject the trap sequences while not splitting any words from the original text.
     '''
 
     text_split_by_spaces = text.split(" ")
     all_indices_text = range(len(text_split_by_spaces))
-    canary_indices = np.sort(random.sample(all_indices_text, n_rep))
+    trap_indices = np.sort(random.sample(all_indices_text, n_rep))
 
     new_text = ''
     last_index = 0
 
-    for idx in canary_indices:
+    for idx in trap_indices:
         new_text += " ".join(text_split_by_spaces[last_index:idx])
         if idx == 0:
             new_text += trap_text
@@ -41,15 +41,15 @@ def inject_one(text: str, trap_text: str, n_rep: int ) -> str:
 
 def inject_all(df_trap_info, raw_dataset, tokenizer, args):
 
-    canary_dataset_entries = []
-    logging.info("Injecting canaries...")
+    trap_dataset_entries = []
+    logging.info("Injecting traps...")
 
     for i, og_entry in tqdm(enumerate(raw_dataset)):
         new_entry = og_entry.copy()
         
         if i in df_trap_info.index:
             row = df_trap_info.loc[i]
-            trap_tokens, n_rep = row["canary_tokens"], row["n_rep"]
+            trap_tokens, n_rep = row["trap_tokens"], row["n_rep"]
             new_text = inject_one(
                 text=og_entry["text"], 
                 trap_text=tokenizer.decode(trap_tokens), 
@@ -58,10 +58,10 @@ def inject_all(df_trap_info, raw_dataset, tokenizer, args):
 
             new_entry["text"] = new_text
 
-        canary_dataset_entries.append(new_entry)
+        trap_dataset_entries.append(new_entry)
 
     # save the results
-    ds_dict = {k: [e[k] for e in canary_dataset_entries] for k in raw_dataset.column_names}
+    ds_dict = {k: [e[k] for e in trap_dataset_entries] for k in raw_dataset.column_names}
     dataset = Dataset.from_dict(ds_dict)
     
     return dataset
@@ -108,7 +108,7 @@ def distribute_traps(all_traps, raw_dataset, args) -> pd.DataFrame:
                     "seq_len": seq_len,
                     "ppl_bucket": ppl_bucket,
                     "n_rep": n_rep,
-                    "canary_tokens": trap_tokens,
+                    "trap_tokens": trap_tokens,
                 })
 
     df = pd.DataFrame(records)

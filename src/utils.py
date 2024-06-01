@@ -1,15 +1,11 @@
-import random
-from itertools import cycle
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Iterable, Optional, Sequence
 
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from scipy.stats import norm
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import auc, roc_curve
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import PreTrainedModel
 
 
 def ratio_auc(members: Sequence[float], non_members: Sequence[float]):
@@ -96,7 +92,7 @@ def compute_perplexity_df(
     croissant_model,
     llama_tokenizer,
     croissant_tokenizer,
-    raw_canaries,
+    raw_traps,
     batch_size: int = 32,
     croissant_device: str = "cuda:0",
     llama_device: str = "cuda:1",
@@ -104,36 +100,36 @@ def compute_perplexity_df(
 ):
     df_res = pd.DataFrame()
 
-    for i in range(0, len(raw_canaries), batch_size):
-        batch = raw_canaries[i : i + batch_size]
+    for i in range(0, len(raw_traps), batch_size):
+        batch = raw_traps[i : i + batch_size]
 
-        canary_tokens_croissant = croissant_tokenizer.batch_encode_plus(
+        trap_tokens_croissant = croissant_tokenizer.batch_encode_plus(
             list(batch), return_tensors="pt", padding="longest"
         ).to(croissant_device)
-        canary_tokens_llama = llama_tokenizer.batch_encode_plus(list(batch), return_tensors="pt", padding="longest").to(
+        trap_tokens_llama = llama_tokenizer.batch_encode_plus(list(batch), return_tensors="pt", padding="longest").to(
             llama_device
         )
 
         croissant_ppl = compute_perplexity(
             croissant_model,
-            canary_tokens_croissant.input_ids[:, 1:],
-            canary_tokens_croissant.attention_mask[:, 1:],
+            trap_tokens_croissant.input_ids[:, 1:],
+            trap_tokens_croissant.attention_mask[:, 1:],
             ignore_prefix=ignore_prefix,
         )
         llama_ppl = compute_perplexity(
             llama_model,
-            canary_tokens_llama.input_ids[:, 1:],
-            canary_tokens_llama.attention_mask[:, 1:],
+            trap_tokens_llama.input_ids[:, 1:],
+            trap_tokens_llama.attention_mask[:, 1:],
             ignore_prefix=ignore_prefix,
         )
 
         minkprob = min_k_prob(
             croissant_model,
-            canary_tokens_croissant.input_ids[:, 1:],
-            canary_tokens_croissant.attention_mask[:, 1:],
+            trap_tokens_croissant.input_ids[:, 1:],
+            trap_tokens_croissant.attention_mask[:, 1:],
         )
 
-        croissant_token_len = canary_tokens_croissant.attention_mask[:, 1:].sum(axis=1).detach().cpu().numpy()
+        croissant_token_len = trap_tokens_croissant.attention_mask[:, 1:].sum(axis=1).detach().cpu().numpy()
 
         df_tmp = pd.DataFrame(
             {

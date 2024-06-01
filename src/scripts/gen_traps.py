@@ -11,10 +11,10 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 from utils import compute_perplexity, jaccard_similarity
 
 
-def is_duplicate(seq: Sequence, canaries: Dict[Any, Iterable[Iterable]], threshold=0.2):
-    for key in canaries:
-        for canary in canaries[key]:
-            if jaccard_similarity(seq[1:], canary[1:]) > threshold:
+def is_duplicate(seq: Sequence, traps: Dict[Any, Iterable[Iterable]], threshold=0.2):
+    for key in traps:
+        for trap in traps[key]:
+            if jaccard_similarity(seq[1:], trap[1:]) > threshold:
                 return True
 
     return False
@@ -22,10 +22,10 @@ def is_duplicate(seq: Sequence, canaries: Dict[Any, Iterable[Iterable]], thresho
 
 def gen_single_unit_buckets(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, args):
     ppl_range = args.max_perplexity - args.min_perplexity + 1
-    canaries = {i: [] for i in range(args.min_perplexity, args.max_perplexity + 1)}
+    traps = {i: [] for i in range(args.min_perplexity, args.max_perplexity + 1)}
 
     input = tokenizer([""] * args.batch_size, return_tensors="pt").to(args.device)
-    samples_per_unit = args.num_canaries // ppl_range
+    samples_per_unit = args.num_traps // ppl_range
 
     total_samples = 0
     step = 0
@@ -33,13 +33,13 @@ def gen_single_unit_buckets(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, 
     bucket_full = 0
     too_high_ppl = 0
 
-    while sum([len(x) for x in canaries.values()]) < args.num_canaries:
+    while sum([len(x) for x in traps.values()]) < args.num_traps:
         if step > 0 and step % 5 == 0:
-            samples = sum([len(x) for x in canaries.values()])
+            samples = sum([len(x) for x in traps.values()])
             logging.info(
                 f"Step: {step} | total: {total_samples} | accepted: {samples} | duplicates: {duplicates} | bucket full: {bucket_full} | too_high_ppl: {too_high_ppl}"
             )
-            open_buckets = [key for key, val in canaries.items() if len(val) < samples_per_unit]
+            open_buckets = [key for key, val in traps.items() if len(val) < samples_per_unit]
             logging.info(f"Open buckets: {sorted(open_buckets)}")
 
         for temp in np.arange(args.temp_min, args.temp_max, args.temp_step):
@@ -74,16 +74,16 @@ def gen_single_unit_buckets(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, 
                         too_high_ppl += 1
                         continue
 
-                    if len(canaries[int_ppl]) >= samples_per_unit:
+                    if len(traps[int_ppl]) >= samples_per_unit:
                         bucket_full += 1
                         continue
 
-                    new_canary = generated_ids[idx].detach().cpu().numpy()
-                    if is_duplicate(new_canary, canaries, threshold=args.jaccard_threshold):
+                    new_trap = generated_ids[idx].detach().cpu().numpy()
+                    if is_duplicate(new_trap, traps, threshold=args.jaccard_threshold):
                         duplicates += 1
                         continue
 
-                    canaries[int_ppl].append(new_canary)
+                    traps[int_ppl].append(new_trap)
 
             except (RuntimeError, ValueError):
                 # https://github.com/facebookresearch/llama/issues/380
@@ -91,10 +91,10 @@ def gen_single_unit_buckets(model: LlamaForCausalLM, tokenizer: LlamaTokenizer, 
 
         step += 1
 
-    return canaries
+    return traps
 
 
-def bucketize(canaries, args):
+def bucketize(traps, args):
     ret = {}
     buckets = np.array_split(list(range(args.min_perplexity, args.max_perplexity + 1)), args.num_buckets)
     assert len(set([len(x) for x in buckets])) == 1  # all buckets are equal-sized
@@ -102,7 +102,7 @@ def bucketize(canaries, args):
     for bucket in buckets:
         low = bucket[0]
         high = bucket[-1] + 1  # int(1.99) == 1, so the actual range is (int(low), int(high)+1)
-        arr = np.vstack([x for y in bucket for x in canaries[y]])
+        arr = np.vstack([x for y in bucket for x in traps[y]])
         ret[(low, high)] = arr
 
     return ret
@@ -120,16 +120,16 @@ if __name__ == "__main__":
         "--seq-len",
         type=int,
         required=True,
-        help="Target canary length in tokens (doesn't include BOS token)",
+        help="Target trap sequence length in tokens (doesn't include BOS token)",
     )
-    parser.add_argument("-n", "--num-canaries", type=int, required=True, help="Number of canaries to be generated")
+    parser.add_argument("-n", "--num-traps", type=int, required=True, help="Number of trap sequences to be generated")
 
     parser.add_argument(
         "--max-perplexity",
         type=int,
         default=100,
         help="""
-        Canary perplexity (coverted to int) will be uniformly distributed in the range[1, max_perplexity]. 
+        Trap sequence perplexity (coverted to int) will be uniformly distributed in the range[1, max_perplexity]. 
         Perplexity is converted to integer before comparing to max_perplexity, therefore the actual upper bound is max_perplexity+1.
         """,
     )
@@ -159,16 +159,16 @@ if __name__ == "__main__":
     if (args.max_perplexity - args.min_perplexity + 1) % args.num_buckets != 0:
         raise ValueError("Integer perplexity range must be divisible by the number of buckets")
 
-    # We want to ensure full uniformity across buckets, so that every bucket has the same number of canaries
-    if args.num_canaries % (args.max_perplexity - args.min_perplexity + 1) != 0:
-        raise ValueError("Target number of canaries must be divisible by max_perplexity")
+    # We want to ensure full uniformity across buckets, so that every bucket has the same number of traps
+    if args.num_traps % (args.max_perplexity - args.min_perplexity + 1) != 0:
+        raise ValueError("Target number of traps must be divisible by max_perplexity")
 
     model = LlamaForCausalLM.from_pretrained(args.path_to_model, torch_dtype=torch.float16).to(device)  # type: ignore
     tokenizer = LlamaTokenizer.from_pretrained(args.path_to_tokenizer, torch_dtype=torch.float16)
     tokenizer.pad_token = tokenizer.eos_token
 
-    canaries = gen_single_unit_buckets(model, tokenizer, args)
-    buckets = bucketize(canaries, args)
+    traps = gen_single_unit_buckets(model, tokenizer, args)
+    buckets = bucketize(traps, args)
 
     with open(args.output, "wb") as file:
         pickle.dump(buckets, file)
