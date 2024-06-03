@@ -1,5 +1,8 @@
 # Copyright Traps for Large Language Models
 
+This is a accompanying code for the paper [Copyright Traps for Large Language Models](https://arxiv.org/abs/2402.09363) 
+published at ICML 2024
+
 ## Generating trap sequences
 
 We generate trap sequences to be injected with the following script:
@@ -48,10 +51,42 @@ to have the same number of traps.
 
 Please refer to `src/scripts/run_all.sh` for the full pipeline.
 
-## Data analysis
+## Membership inference
 
 Note that at the moment we're not yet releasing the exact trap sequences we've used for training, so data analysis 
 code is provided for illustrative purposes only.
 
 Code to generate out figures and tables is located in `notebooks/` folder, with one exceptions - script for Table 3
-which lives is `src/scripts`
+which lives is `src/scripts`. 
+
+The key step in our analysis is performing a *Ratio* Membership Inference Attack (MIA) for trap sequences. 
+For each sequence it computes a ratio of the target model (Croissant) perplexity divided by the 
+reference model (LLaMA) perplexity. 
+The intuition here is that we want to measure the change in perplexity compared to the model that hasn't seen the
+sequence, but without retraining the full Croissant model. See `utils.py` for more details on MIA implementation.
+
+We evaluate our MIA on a balanced dataset of *members* and *non-members*. We therefore run `gen_traps.py` script 
+one more time with the same hyperparameters and for the same number of trap sequences, but do not inject them into
+the dataset. Data analysis notebook expect non-member traps to be located in the same folder, with one file per 
+sequence length, where the sequence length is inducated in the filename. We then expect the filename template to be
+provided as `NON_MEMBERS_PATH_TEMPLATE`. 
+
+For instance, if your non-member sequences are located as `/data/traps/non_members_len_25`, 
+`/data/traps/non_members_len_50`, and `/data/traps/non_members_len_100`, you should set 
+
+```
+NON_MEMBERS_PATH_TEMPLATE="/data/traps/non_members_len_%d"
+```
+
+## Citation
+
+Please cite this work as
+
+```
+@article{meeus2024copyright,
+  title={Copyright Traps for Large Language Models},
+  author={Meeus, Matthieu and Shilov, Igor and Faysse, Manuel and de Montjoye, Yves-Alexandre},
+  journal={arXiv preprint arXiv:2402.09363},
+  year={2024}
+}
+```
