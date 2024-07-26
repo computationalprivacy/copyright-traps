@@ -83,10 +83,9 @@ NON_MEMBERS_PATH_TEMPLATE="/data/traps/non_members_len_%d"
 Please cite this work as
 
 ```
-@article{meeus2024copyright,
+@inproceedings{meeuscopyright,
   title={Copyright Traps for Large Language Models},
   author={Meeus, Matthieu and Shilov, Igor and Faysse, Manuel and de Montjoye, Yves-Alexandre},
-  journal={arXiv preprint arXiv:2402.09363},
-  year={2024}
+  booktitle={Forty-first International Conference on Machine Learning}
 }
 ```
