@@ -1,7 +1,7 @@
 # Copyright Traps for Large Language Models
 
-This is a accompanying code for the paper [Copyright Traps for Large Language Models](https://arxiv.org/abs/2402.09363) 
-published at ICML 2024
+This is the accompanying code for the paper [Copyright Traps for Large Language Models](https://arxiv.org/abs/2402.09363) 
+published at ICML 2024.
 
 ## Generating trap sequences
 
