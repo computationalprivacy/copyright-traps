@@ -3,6 +3,8 @@
 This is the accompanying code for the paper [Copyright Traps for Large Language Models](https://arxiv.org/abs/2402.09363) 
 published at ICML 2024.
 
+**The dataset of traps has been released [here](https://huggingface.co/datasets/imperial-cpg/copyright-traps)!** 
+
 ## Generating trap sequences
 
 We generate trap sequences to be injected with the following script:
